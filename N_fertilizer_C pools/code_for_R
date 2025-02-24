@@ -1,0 +1,1161 @@
+rm(list = ls())
+library(pacman)
+pacman::p_load(
+  lmerTest, emmeans, plyr, dplyr, cowplot, tidyverse, reshape2,
+  BestFitM, rstatix, ggtrendline, openxlsx, agricolae, ggplot2, ggsci, scales,
+  ggpubr, patchwork, broom, RColorBrewer, PerformanceAnalytics, corrmorant, lme4, car,
+  grid, factoextra, ggnewscale, trend, segmented, doParallel, metafor, gghalves,gridExtra,
+  orchaRd, mgcv, gam, chngpt, ggpmisc, scales, ade4, ggpubr, Rmisc, ggsci, jtools,ggh4x, interactions,
+  SiZer, data.table, boot, rsm, ggbeeswarm, ggforce, tastypie, ggrepel, maps, ggspatial,
+  maps, plotbiomes, sf, ggrain, metaforest, glmulti, car
+)
+
+options(scipen = 5)
+
+source('/Users/lemon/Desktop/目前的需要做的事情/To_TJ/N_addition/Source_JunLing.R')
+source('C:/Users/ling/Nutstore/1/To_TJ/N_addition/Source_JunLing.R')
+
+cols <- c('royalblue4','red4')
+cols1 <- c('#a66d35', '#338d7b')
+
+###### Fig1 global analysis ##########
+meta_data <- read.csv("C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\地图绘制\\Meta_point.csv")
+meta_data <- read.xlsx("/Users/lemon/Downloads/data_source/Figures_data.xlsx", 1)
+head(meta_data)
+meta_data$group <- factor(meta_data$group, levels = c('Study', 'literature'))
+
+world_no_antartica <- subset(map_data('world'), region!="Antarctica")
+
+p <- ggplot() +
+  geom_polygon(data = world_no_antartica , aes(x = long, y = lat, group = group), 
+               fill = '#d8d7ce', color = '#d8d7ce') +
+  scale_x_continuous(breaks = c(-180, -90, 0, 90, 180), expand = c(0, 0), limits = c(-190,200)) +
+  scale_y_continuous(breaks = c(-50,  0,  50), expand = c(0, 0))
+p
+
+
+costal <- st_read('C:\\Users\\ling\\Downloads\\gshhg-shp-2.3.7\\GSHHS_shp\\l\\GSHHS_l_L1.shp')
+
+p1 <- p + geom_sf(data = costal, fill = NA, color = 'grey') +
+  geom_point(data = meta_data, aes(x = longitude, y = latitude, 
+                                   fill = group, shape = group, color = group), 
+             size = 3, alpha = 1) + 
+  scale_fill_manual(values = c('#FF4500',"#1f4e79")) +
+  scale_color_manual(values = c('#FF4500',"#1f4e79")) +
+  scale_shape_manual(values = c(2, 1)) + 
+  theme(panel.background = element_blank(),
+        axis.line = element_blank(),
+        axis.title = element_blank(),axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.position = c(0.1, 0.1)) +
+  labs(fill = '', color = '', shape = '')
+p1
+
+ggsave(plot = p1, 'global_mapsde.pdf', width = 10, height = 6, device = cairo_pdf())
+
+climate_site <- read.xlsx("C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\地图绘制\\climate_site.xlsx", 1); head(climate_site)
+climate_site$group <- factor(climate_site$group, levels = c('Study', 'literature'))
+
+colors <- c(
+  Tundra = "#C1E1DD",
+  `Boreal forest` = "#A5C790",
+  `Temperate seasonal forest` = "#97B669",
+  `Temperate rain forest` = "#75A95E",
+  `Tropical rain forest` = "#317A22",
+  `Tropical seasonal forest/savanna` = "#A09700",
+  `Subtropical desert` = "#DCBB50",
+  `Temperate grassland/desert` = "#FCD57A",
+  `Woodland shrubland` = "#D16E3F",
+  `Study` = '#FF4500',
+  `literature` = "#1f4e79"
+)
+
+Biome_plot <- whittaker_base_plot()+
+  theme_cowplot() + 
+  theme(
+    legend.position = c(0.05, 0.75),
+    legend.title = element_blank())
+
+Biome_plot_1 <- Biome_plot + 
+  geom_point(data = climate_site, aes(x = MAT, y = MAP/10, 
+                                      color = group, shape = group), size = 3, alpha = 1) + 
+  scale_color_manual(values = colors) +
+  scale_shape_manual(values = c(2, 1))
+Biome_plot_1 
+
+p1 +
+  inset_element(Biome_plot_1 , left = 0, bottom = 0, right = 0.4, top = 0.4)
+
+ggsave(plot = Biome_plot_1, 'climate_map.pdf', width = 4, height = 4, device = cairo_pdf())
+
+df <- fread('C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\原始数据-老师发送过来的\\POCMOC1.csv')
+df <- fread('/Users/lemon/Desktop/目前的需要做的事情/To_TJ/N_addition/原始数据-老师发送过来的/POCMOC1.csv')
+head(df)
+df$publucation_Year <- as.numeric(gsub("\\D", "", df$reference))
+
+df <- subset(df, alltreatment == 'IF-NF')
+
+df %>% dplyr::select(
+  id, num, publucation_Year, SSOC, Ninput, SPH, croptype,
+  SOC_treat, SOC_treat_n, SOC_treat_SD, SOC_con, SOC_con_n, SOC_con_SD,
+  POC_treat, POC_treat_n, POC_treat_SD, POC_con, POC_con_n, POC_con_SD,
+  MOC_treat, MOC_treat_n, MOC_treat_SD, MOC_con, MOC_con_n, MOC_con_SD
+) -> dff
+head(dff)
+
+dff %>%
+  filter(croptype != "rice") -> dff
+head(dff)
+
+
+POC_es <-
+  escalc(
+    "ROM",
+    m1i = POC_treat,
+    n1i = POC_treat_n,
+    sd1i = POC_treat_SD,
+    m2i = POC_con,
+    n2i = POC_con_n,
+    sd2i = POC_con_SD,
+    data = dff
+  )
+head(POC_es)
+
+MOC_es <-
+  escalc(
+    "ROM",
+    m1i = MOC_treat,
+    n1i = MOC_treat_n,
+    sd1i = MOC_treat_SD,
+    m2i = MOC_con,
+    n2i = MOC_con_n,
+    sd2i = MOC_con_SD,
+    data = dff
+  )
+head(MOC_es)
+
+
+SOC_es <-
+  escalc(
+    "ROM",
+    m1i = SOC_treat,
+    n1i = SOC_treat_n,
+    sd1i = SOC_treat_SD,
+    m2i = SOC_con,
+    n2i = SOC_con_n,
+    sd2i = SOC_con_SD,
+    data = dff
+  )
+head(SOC_es)
+
+POC_es_1 <- POC_es %>% dplyr::select(id, num, SSOC, yi, vi) %>% drop_na()
+
+names(POC_es_1)[names(POC_es_1) == "num"] <- "Order_ID"
+env_var <- c('SSOC')
+div_var <- c('yi')
+dat <- POC_es_1
+threshold_check <-  compute_pairs(env_var, div_var, dat, log.y = F)
+gam_test = threshold_check$gam_test
+gam_test
+threshold = subset(threshold_check$thresholds, method == 'all')
+dataLine <- threshold
+
+lm_MOC <- lm(yi ~ SSOC, data = POC_es_1)
+summary(lm_MOC)
+pettitt.test(POC_es_1$yi)
+
+fit_lm <- lm_MOC
+summary(fit_lm)
+lm_seg1 <- segmented(fit_lm, seg.Z = ~ SSOC, npsi = 1)
+summary(lm_seg1)
+
+
+predicted_data <- data.frame(SSOC = POC_es_1$SSOC, yi = predict(lm_seg1, interval = "confidence"))
+head(predicted_data)
+model_gam <- gam(yi ~ s(SSOC), data = POC_es_1, family = gaussian)
+predicted_data_gam <- data.frame(SSOC = POC_es_1$SSOC, yi = predict(model_gam, interval = "confidence"))
+head(predicted_data_gam)
+
+df1_POC <- POC_es_1 %>%
+  mutate(group = ifelse(SSOC <= dataLine$threshold, "before", "after"))
+
+summary(df1_POC %>% dplyr::filter(group == 'before') %>% lm(yi ~ SSOC, data = .,))
+summary(df1_POC %>% dplyr::filter(group == 'after') %>% lm(yi ~ SSOC, data = .,))
+
+POC_regre <- ggplot() +
+  geom_point(data = df1_POC, aes(x = SSOC, y = yi, size = vi, color = group), alpha = .8, shape = 16) +
+  scale_size_continuous(range = c(3, 5)) +
+  geom_smooth(data = df1_POC, aes(x = SSOC, y = yi, group = group, linetype = group), method = "lm", size = 2, se = T, color = '#1451b8') +
+  geom_rug(data = df1_POC, aes(x = SSOC, y = yi), sides = "lb", color = "grey", alpha = .5, length = unit(0.02, "npc")) +
+  geom_line(data = predicted_data_gam, aes(SSOC, y = yi), color = 'black', linetype = 'dashed', size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+  geom_vline(xintercept = dataLine$threshold, linetype="longdash", color = "darkred", size = 1) +
+  scale_color_manual(values = c('orange4', 'aquamarine4')) +
+  scale_linetype_manual(values = c('longdash', 'solid')) +
+  labs(x = "Initial SOC", y = "RR of POC") +
+  theme_cowplot() + theme(legend.position = 'none', axis.text = element_text(size = 20), 
+                          axis.title = element_text(size = 22)); POC_regre
+
+resPOC <-  funcdiff(data = df1_POC, thres = dataLine$threshold, response = "yi", bootthres = bootthres)
+head(resPOC)
+resPOC$position=factor(x=resPOC$position,levels=c("before","after"))
+resPOC$thres=as.factor(resPOC$thres)
+POC_slope <- ggplot(data = resPOC,aes(x=thres,y = slope,fill=position))+
+  theme_cowplot()+ geom_rug(data = resPOC,aes(x=thres,y = slope), sides = "lb", color = "grey", alpha = .5, length = unit(0.02, "npc")) +
+  scale_fill_manual(values = c('aquamarine4', 'orange4')) + 
+  geom_split_violin() + labs(x=NULL,y=NULL,fill=NULL) +
+  theme(axis.title = element_text(color = 'black'),
+        axis.line = element_line(color = 'black'),
+        axis.ticks = element_line(color = 'black'),
+        axis.text.x = element_text(color = 'darkred'),
+        legend.position = 'none',
+        legend.background = element_blank(),
+        strip.placement = 'outside',
+        strip.background = element_blank(),
+        panel.grid = element_blank(), 
+        panel.spacing.x = unit(2,'lines'))
+POC_slope
+resPOC_before <- subset(resPOC, position == 'before')
+resPOC_after <- subset(resPOC, position == 'after')
+vector1 <- resPOC_before$slope
+vector2 <- resPOC_after$slope
+wilcox.test(vector1, vector2, alternative = "two.sided")
+
+english_MR0 <- rma.mv(yi = yi, V = vi, mods = ~ group, 
+                      random = list(~ 1 |id/Order_ID), data = df1_POC)
+summary(english_MR0)
+
+res2 <- orchaRd::mod_results(english_MR0, mod = "group", group = "id")
+res2
+
+orchaRd::orchard_plot(res2, 
+                      mod = "group", group = "id", twig.size = 0, k = FALSE, 
+                      g = FALSE,
+                      xlab = "RR of POC")  + theme_cowplot() + 
+  scale_fill_manual(values = rev(c('aquamarine4', 'orange4'))) +
+  scale_color_manual(values = rev(c('aquamarine4', 'orange4'))) +
+  theme(legend.position = 'none', axis.text = element_text(size = 20),
+        axis.title = element_text(size = 22)) -> POC_diff
+POC_diff
+
+lin_size = 0.3; p_size = 0.5; h_lin_size = 0.7; wid_output = 5; hei_output = 5; ci_range1 <- 1; ci_range2 <- 0
+head(POC_es_1)
+
+english_MR0 <- rma.mv(yi = yi, V = vi, 
+                      random = list(~ id | num), data = POC_es)
+summary(english_MR0)
+fixeffect_data <- data.frame(
+  Sample = 493/2,
+  Estimate = 0.2159,
+  SD = 0.0275
+); fixeffect_data
+
+data_input <- copy(POC_es_1)
+head(data_input)
+matrix_data_input <- data_input[, c("yi", "vi")]
+matrix_data_input <- matrix_data_input[order(matrix_data_input$yi), ]
+matrix_data_input$vi <- sqrt(matrix_data_input$vi)
+
+order_IDs <- which((matrix_data_input$yi <= quantile(matrix_data_input$yi, ci_range1)) & (matrix_data_input$yi >= quantile(matrix_data_input$yi, ci_range2)))
+
+matrix_data_input_fig <- data.frame(
+  Sample = seq(1, length(order_IDs)),
+  Mean = matrix_data_input$yi[order_IDs],
+  SD = matrix_data_input$vi[order_IDs]
+)
+
+
+extramatrix_data_input_fig <- data.frame()
+
+for (i in seq(1, nrow(matrix_data_input_fig))) {
+  if ((matrix_data_input_fig[i, "Mean"] + qnorm(0.975) * matrix_data_input_fig[i, "SD"]) < 0) {
+    temper <- matrix_data_input_fig[i, ]
+    temper$Color <- "royalblue4"
+    extramatrix_data_input_fig <- rbind(extramatrix_data_input_fig, temper)
+  }
+  if ((matrix_data_input_fig[i, "Mean"] - qnorm(0.975) * matrix_data_input_fig[i, "SD"]) > 0) {
+    temper <- matrix_data_input_fig[i, ]
+    temper$Color <- "red4"
+    extramatrix_data_input_fig <- rbind(extramatrix_data_input_fig, temper)
+  }
+}
+
+POC_F1 <- ggplot() +
+  geom_errorbar(
+    data = matrix_data_input_fig, mapping = aes(x = Sample, ymin = Mean - qnorm(0.975) * SD, ymax = Mean + qnorm(0.975) * SD),
+    color = "#D1D1D1", size = lin_size, width = 0
+  ) +
+  geom_errorbar(
+    data = extramatrix_data_input_fig, mapping = aes(x = Sample, ymin = Mean - qnorm(0.975) * SD, ymax = Mean + qnorm(0.975) * SD),
+    color = extramatrix_data_input_fig$Color, size = lin_size, width = 0
+  ) +
+  geom_errorbar(data = fixeffect_data, aes(x = Sample, ymin = Estimate - qnorm(0.975) * SD, ymax = Estimate + qnorm(0.975) * SD), width = 0, linewidth = 2, color = '#816305') +
+  geom_point(data = fixeffect_data, aes(x = Sample, y = Estimate), color = 'black', shape = 5, size = 2) +
+  geom_point(data = extramatrix_data_input_fig, mapping = aes(x = Sample, y = Mean), color = extramatrix_data_input_fig$Color, size = p_size) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#000000", size = h_lin_size) +
+  scale_x_continuous(limits = c(1, nrow(matrix_data_input_fig)), breaks = c(1, nrow(matrix_data_input_fig)), labels = c("1", as.character(nrow(matrix_data_input_fig))), expand = c(0.03, 0.03)) +
+  theme_cowplot() + theme(legend.position = 'none', axis.text = element_text(size = 20), 
+                          axis.title = element_text(size = 22)); POC_F1
+
+table(extramatrix_data_input_fig$Color)
+sum(!is.na(matrix_data_input_fig$Mean)) - 264 - 26
+
+round((264/494), 3)
+round((26/494), 3)
+round((203/494), 3)
+
+bar_data <- data.frame(
+  response = c("positive", "negative", "neutral"),
+  count = c(0.54, 0.05, 0.41)
+); bar_data 
+
+bar_data$response <- factor(bar_data$response, levels = c("negative", "neutral", "positive"))
+ggplot(bar_data, aes(x = response, y = count, fill = response)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(values = c("royalblue4","#D1D1D1","red4")) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0,0)) + 
+  geom_text(aes(label = count), vjust = -0.5, size = 4) +
+  theme_cowplot() +
+  labs(x = '', y = '') +
+  theme(axis.title = element_blank(), axis.text.x = element_blank(), legend.position = 'none') -> POC_F2; POC_F2
+
+(((POC_F1 +
+     inset_element(POC_F2, left = 0, bottom = 0.6, right = 0.4, top = 1)) / 
+    (POC_regre + inset_element(POC_slope, left = 0.6, bottom = 0.6, right = 1, top = 1)) / 
+    POC_diff) + 
+    plot_layout(ncol = 1, heights = c(3, 3, 2.4))) -> POC_combined
+POC_combined
+
+
+MOC_es %>% dplyr::select(id, num, SSOC, yi, vi) %>% 
+  drop_na() -> MOC_es_1
+
+names(MOC_es_1)[names(MOC_es_1) == "num"] <- "Order_ID"
+env_var <- c('SSOC')
+div_var <- c('yi')
+dat <- MOC_es_1
+threshold_check <-  compute_pairs(env_var, div_var, dat, log.y = F)
+gam_test = threshold_check$gam_test
+gam_test
+threshold = subset(threshold_check$thresholds, method == 'all')
+dataLine <- threshold; dataLine
+
+lm_MOC <- lm(yi ~ SSOC, data = MOC_es_1)
+summary(lm_MOC)
+pettitt.test(MOC_es_1$yi)
+
+fit_lm <- lm_MOC
+summary(fit_lm)
+lm_seg1 <- segmented(fit_lm, seg.Z = ~ SSOC, npsi = 1)
+summary(lm_seg1)
+
+
+predicted_data <- data.frame(SSOC = MOC_es_1$SSOC, yi = predict(lm_seg1, interval = "confidence"))
+head(predicted_data)
+model_gam <- gam(yi ~ s(SSOC), data = MOC_es_1, family = gaussian)
+predicted_data_gam <- data.frame(SSOC = MOC_es_1$SSOC, yi = predict(model_gam, interval = "confidence"))
+head(predicted_data_gam)
+df1_MOC <- MOC_es_1 %>%
+  mutate(group = ifelse(SSOC <= dataLine$threshold, "before", "after"))
+
+
+summary(df1_MOC %>% dplyr::filter(group == 'before') %>% lm(yi ~ SSOC, data = .,))
+summary(df1_MOC %>% dplyr::filter(group == 'after') %>% lm(yi ~ SSOC, data = .,))
+
+MAOC_regre <- ggplot() +
+  geom_point(data = df1_MOC, aes(x = SSOC, y = yi, size = vi, color = group), alpha = .8, shape = 16) +
+  scale_size_continuous(range = c(3, 5)) +
+  geom_smooth(data = df1_MOC, aes(x = SSOC, y = yi, group = group, linetype = group), method = "lm", size = 2, se = T, color = '#1451b8') +
+  geom_rug(data = df1_MOC, aes(x = SSOC, y = yi), sides = "lb", color = "grey", alpha = .5, length = unit(0.02, "npc")) +
+  geom_line(data = predicted_data_gam, aes(SSOC, y = yi), color = 'black', linetype = 'dashed', size = 2) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+  geom_vline(xintercept = dataLine$threshold, linetype="longdash", color = "darkred", size = 1) +
+  ylim(-0.7, 1) +
+  scale_color_manual(values = c('orange4', 'aquamarine4')) +
+  scale_linetype_manual(values = c('longdash', 'solid')) +
+  labs(x = "Initial SOC", y = "RR of MAOC") +
+  theme_cowplot() + theme(legend.position = 'none') +
+  theme(legend.position = 'none', axis.text = element_text(size = 20), 
+        axis.title = element_text(size = 22)); MAOC_regre
+
+resMOC <-  funcdiff(data = df1_MOC, thres = dataLine$threshold, response = "yi", bootthres = bootthres)
+head(resMOC)
+resMOC$position=factor(x=resMOC$position,levels=c("before","after"))
+resMOC$thres=as.factor(resMOC$thres)
+MOC_slope <- ggplot(data = resMOC,aes(x=thres,y = slope,fill=position))+
+  theme_cowplot()+ geom_rug(data = resMOC,aes(x=thres,y = slope), sides = "lb", color = "grey", alpha = .5, length = unit(0.02, "npc")) +
+  scale_fill_manual(values = c('aquamarine4', 'orange4')) + 
+  geom_split_violin() + labs(x=NULL,y=NULL,fill=NULL) +
+  theme(axis.title = element_text(color = 'black'),
+        axis.text.x = element_text(color = 'darkred'),
+        axis.line = element_line(color = 'black'),
+        axis.ticks = element_line(color = 'black'),
+        legend.background = element_blank(),
+        strip.placement = 'outside',
+        strip.background = element_blank(),
+        panel.grid = element_blank(),  
+        panel.spacing.x = unit(2,'lines'), legend.position = 'none')
+MOC_slope
+resMOC_before <- subset(resMOC, position == 'before')
+resMOC_after <- subset(resMOC, position == 'after')
+vector1 <- resMOC_before$slope
+vector2 <- resMOC_after$slope
+wilcox.test(vector1, vector2, alternative = "two.sided")
+
+english_MOC <- rma.mv(yi = yi, V = vi, mods = ~ group, 
+                      random = list(~ 1 | Order_ID), data = df1_MOC)
+summary(english_MOC)
+
+res2 <- orchaRd::mod_results(english_MOC, mod = "group", group = "id")
+res2
+
+orchaRd::orchard_plot(res2, 
+                      mod = "group", group = "id", twig.size = 0, k = FALSE, 
+                      g = FALSE,
+                      xlab = "RR of MAOC")  + theme_cowplot() + 
+  scale_fill_manual(values = rev(c('aquamarine4', 'orange4'))) +
+  scale_color_manual(values = rev(c('aquamarine4', 'orange4'))) +
+  ylim(-0.7, 0.8) +
+  theme(legend.position = 'none', axis.text = element_text(size = 20),
+        axis.title = element_text(size = 22)) -> MAOC_diff
+MAOC_diff
+
+english_MR0 <- rma.mv(yi = yi, V = vi, 
+                      random = list(~ id | num), data = MOC_es)
+summary(english_MR0) 
+fixeffect_data <- data.frame(
+  Sample = 149/2, 
+  Estimate = 0.0671,
+  SD = 0.0238
+); fixeffect_data
+
+data_input <- copy(MOC_es_1)
+head(data_input)
+matrix_data_input <- data_input[, c("yi", "vi")]
+matrix_data_input <- matrix_data_input[order(matrix_data_input$yi), ]
+matrix_data_input$vi <- sqrt(matrix_data_input$vi)
+
+order_IDs <- which((matrix_data_input$yi <= quantile(matrix_data_input$yi, ci_range1)) & (matrix_data_input$yi >= quantile(matrix_data_input$yi, ci_range2)))
+
+matrix_data_input_fig <- data.frame(
+  Sample = seq(1, length(order_IDs)),
+  Mean = matrix_data_input$yi[order_IDs],
+  SD = matrix_data_input$vi[order_IDs]
+)
+
+
+extramatrix_data_input_fig <- data.frame()
+
+for (i in seq(1, nrow(matrix_data_input_fig))) {
+  if ((matrix_data_input_fig[i, "Mean"] + qnorm(0.975) * matrix_data_input_fig[i, "SD"]) < 0) {
+    temper <- matrix_data_input_fig[i, ]
+    temper$Color <- "royalblue4"
+    extramatrix_data_input_fig <- rbind(extramatrix_data_input_fig, temper)
+  }
+  if ((matrix_data_input_fig[i, "Mean"] - qnorm(0.975) * matrix_data_input_fig[i, "SD"]) > 0) {
+    temper <- matrix_data_input_fig[i, ]
+    temper$Color <- "red4"
+    extramatrix_data_input_fig <- rbind(extramatrix_data_input_fig, temper)
+  }
+}
+
+MOC_F1 <- ggplot() +
+  geom_errorbar(
+    data = matrix_data_input_fig, mapping = aes(x = Sample, ymin = Mean - qnorm(0.975) * SD, ymax = Mean + qnorm(0.975) * SD),
+    color = "#D1D1D1", size = lin_size, width = 0
+  ) +
+  geom_errorbar(
+    data = extramatrix_data_input_fig, mapping = aes(x = Sample, ymin = Mean - qnorm(0.975) * SD, ymax = Mean + qnorm(0.975) * SD),
+    color = extramatrix_data_input_fig$Color, size = lin_size, width = 0
+  ) +
+  geom_errorbar(data = fixeffect_data, aes(x = Sample, ymin = Estimate - qnorm(0.975) * SD, ymax = Estimate + qnorm(0.975) * SD), width = 0, linewidth = 2, color = '#816305') +
+  geom_point(data = fixeffect_data, aes(x = Sample, y = Estimate), color = 'black', shape = 5, size = 2) +
+  geom_point(data = extramatrix_data_input_fig, mapping = aes(x = Sample, y = Mean), color = extramatrix_data_input_fig$Color, size = p_size) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#000000", size = h_lin_size) +
+  scale_x_continuous(limits = c(1, nrow(matrix_data_input_fig)), breaks = c(1, nrow(matrix_data_input_fig)), labels = c("1", as.character(nrow(matrix_data_input_fig))), expand = c(0.03, 0.03)) +
+  theme_cowplot() + theme(legend.position = 'none', axis.text = element_text(size = 20), 
+                          axis.title = element_text(size = 22)); MOC_F1
+
+table(extramatrix_data_input_fig$Color)
+sum(!is.na(matrix_data_input_fig$Mean)) - 42 - 13
+
+round((42/149), 2)
+round((12/149), 2)
+round((94/149), 2)
+
+bar_data <- data.frame(
+  response = c("positive", "negative", "neutral"),
+  count = c(0.28, 0.08, 0.64)
+); bar_data 
+
+bar_data$response <- factor(bar_data$response, levels = c("negative", "neutral","positive"))
+ggplot(bar_data, aes(x = response, y = count, fill = response)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(values = c("royalblue4","#D1D1D1","red4")) +
+  geom_text(aes(label = count), vjust = -0.5, size = 4) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0,0)) +
+  theme_cowplot() +
+  labs(x = '', y = '') +
+  theme(axis.title = element_blank(), axis.text.x = element_blank(), legend.position = 'none') -> MOC_F2; MOC_F2
+
+(((MOC_F1 +
+     inset_element(MOC_F2, left = 0, bottom = 0.6, right = 0.4, top = 1)) / 
+    (MAOC_regre + inset_element(MOC_slope, left = 0.6, bottom = 0.6, right = 1, top = 1)) / 
+    MAOC_diff) + 
+    plot_layout(ncol = 1, heights = c(3, 3, 2.4))) -> MAOC_combined
+MAOC_combined
+
+
+(POC_combined | MAOC_combined)
+
+ggsave('meta_angwt.pdf', plot = last_plot(), width = 14, height = 16, device = cairo_pdf)
+
+ggsave('map_6.29.pdf', plot = p1, width = 16, height = 5, device = cairo_pdf)
+
+SOC_es_1 <- SOC_es %>% dplyr::select(id, num, yi, vi) %>% drop_na()
+length(unique(SOC_es_1$num))
+
+lin_size = 0.3; p_size = 0.5; h_lin_size = 0.7; wid_output = 5; hei_output = 5; ci_range1 <- 1; ci_range2 <- 0
+head(SOC_es_1)
+
+english_MR0 <- rma.mv(yi = yi, V = vi, 
+                      random = list(~ id | num), data = SOC_es)
+summary(english_MR0)
+fixeffect_data <- data.frame(
+  Sample = 565/2,
+  Estimate = 0.1068,
+  SD = 0.0136
+); fixeffect_data
+
+data_input <- copy(SOC_es_1)
+head(data_input)
+matrix_data_input <- data_input[, c("yi", "vi")]
+matrix_data_input <- matrix_data_input[order(matrix_data_input$yi), ]
+matrix_data_input$vi <- sqrt(matrix_data_input$vi)
+
+order_IDs <- which((matrix_data_input$yi <= quantile(matrix_data_input$yi, ci_range1)) & (matrix_data_input$yi >= quantile(matrix_data_input$yi, ci_range2)))
+
+matrix_data_input_fig <- data.frame(
+  Sample = seq(1, length(order_IDs)),
+  Mean = matrix_data_input$yi[order_IDs],
+  SD = matrix_data_input$vi[order_IDs]
+)
+
+
+extramatrix_data_input_fig <- data.frame()
+
+for (i in seq(1, nrow(matrix_data_input_fig))) {
+  if ((matrix_data_input_fig[i, "Mean"] + qnorm(0.975) * matrix_data_input_fig[i, "SD"]) < 0) {
+    temper <- matrix_data_input_fig[i, ]
+    temper$Color <- "royalblue4"
+    extramatrix_data_input_fig <- rbind(extramatrix_data_input_fig, temper)
+  }
+  if ((matrix_data_input_fig[i, "Mean"] - qnorm(0.975) * matrix_data_input_fig[i, "SD"]) > 0) {
+    temper <- matrix_data_input_fig[i, ]
+    temper$Color <- "red4"
+    extramatrix_data_input_fig <- rbind(extramatrix_data_input_fig, temper)
+  }
+}
+
+SOC_F1 <- ggplot() +
+  geom_errorbar(
+    data = matrix_data_input_fig, mapping = aes(x = Sample, ymin = Mean - qnorm(0.975) * SD, ymax = Mean + qnorm(0.975) * SD),
+    color = "#D1D1D1", size = lin_size, width = 0
+  ) +
+  geom_errorbar(
+    data = extramatrix_data_input_fig, mapping = aes(x = Sample, ymin = Mean - qnorm(0.975) * SD, ymax = Mean + qnorm(0.975) * SD),
+    color = extramatrix_data_input_fig$Color, size = lin_size, width = 0
+  ) +
+  geom_errorbar(data = fixeffect_data, aes(x = Sample, ymin = Estimate - qnorm(0.975) * SD, ymax = Estimate + qnorm(0.975) * SD), width = 0, linewidth = 2, color = '#816305') +
+  geom_point(data = fixeffect_data, aes(x = Sample, y = Estimate), color = 'black', shape = 5, size = 2) +
+  geom_point(data = extramatrix_data_input_fig, mapping = aes(x = Sample, y = Mean), color = extramatrix_data_input_fig$Color, size = p_size) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "#000000", size = h_lin_size) +
+  scale_x_continuous(limits = c(1, nrow(matrix_data_input_fig)), breaks = c(1, nrow(matrix_data_input_fig)), labels = c("1", as.character(nrow(matrix_data_input_fig))), expand = c(0.03, 0.03)) +
+  theme_cowplot() + theme(legend.position = 'none', axis.text = element_text(size = 20), 
+                          axis.title = element_text(size = 22)); SOC_F1
+
+table(extramatrix_data_input_fig$Color) 
+sum(!is.na(matrix_data_input_fig$Mean)) - 237 - 10 
+
+round((237/565), 3)
+round((10/565), 3)
+round((318/565), 3)
+
+bar_data <- data.frame(
+  response = c("positive", "negative", "neutral"),
+  count = c(0.419, 0.018, 0.563)
+); bar_data 
+
+bar_data$response <- factor(bar_data$response, levels = c("negative", "neutral", "positive"))
+ggplot(bar_data, aes(x = response, y = count, fill = response)) +
+  geom_bar(stat = 'identity') +
+  scale_fill_manual(values = c("royalblue4","#D1D1D1","red4")) +
+  scale_y_continuous(limits = c(0, 1), expand = c(0,0)) + 
+  geom_text(aes(label = count), vjust = -0.5, size = 4) +
+  theme_cowplot() +
+  labs(x = '', y = '') +
+  theme(axis.title = element_blank(), axis.text.x = element_blank(), legend.position = 'none') -> SOC_F2; SOC_F2
+
+SOC_F1 +
+  inset_element(SOC_F2, left = 0, bottom = 0.6, right = 0.4, top = 1) -> SOC_combined
+SOC_combined
+
+
+###### Fig2 POC and MAOC sites ##########
+# cols <- c('#d7cbbf','#e4845a')
+cols <- c('royalblue4','red4')
+cols1 <- c('#338d7b','#a66d35')
+
+df_POC <- read.xlsx('C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\可能放在附录的东西\\综合数据.xlsx', 1) %>% 
+  dplyr::select(Site, Fertility, Treat, N_Treat, SOC, POC, MAOC)
+head(df_POC)
+
+df_POC$N_Treat <- factor(df_POC$N_Treat, levels = c('CK', 'N'))
+df_POC$Site <- factor(df_POC$Site, levels = c('QZ', 'CW', 'SP', 'YA'))
+
+df_POC %>% dplyr::group_by(Site, N_Treat) %>% 
+  dplyr::summarise(
+    aver = mean(POC), 
+    stde = sd(POC) / sqrt(n())
+  ) -> df_POC_1; df_POC_1
+
+ggplot() + 
+  geom_bar(data = df_POC_1, aes(x = N_Treat, y = aver, fill = N_Treat), size = 2, 
+           position = "dodge", stat = "identity", width = 0.7, alpha = .7) +  
+  scale_fill_manual(values = cols) +
+  scale_color_manual(values = cols) +
+  geom_errorbar(data = df_POC_1, aes(x = N_Treat, ymin = aver - stde, ymax = aver + stde), width = 0.15, size = 0.8) +
+  labs(x = '') + ylab(expression(paste("POC (g ", kg^-1, ")"))) +
+  theme_cowplot() + theme(
+    legend.position = 'none', 
+    axis.text.x = element_blank(), 
+    axis.text = element_text(size = 20),
+    axis.title = element_text(size = 22),
+    axis.title.x = element_blank(), 
+    strip.text = element_text(size = 22)
+  ) +
+  facet_wrap(~ Site, ncol = 4) + 
+  scale_y_continuous(expand = c(0, 0)) + coord_cartesian(ylim = c(0, 7)) -> POC_F1; POC_F1
+
+
+
+df_MAOC <- read.xlsx('C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\可能放在附录的东西\\综合数据.xlsx', 1) %>% 
+  dplyr::select(Site, Fertility, Treat, N_Treat, SOC, MAOC, MAOC)
+head(df_MAOC)
+
+df_MAOC$N_Treat <- factor(df_MAOC$N_Treat, levels = c('CK', 'N'))
+df_MAOC$Site <- factor(df_MAOC$Site, levels = c('QZ', 'CW', 'SP', 'YA'))
+
+df_MAOC %>% dplyr::group_by(Site, N_Treat) %>% 
+  dplyr::summarise(
+    aver = mean(MAOC), 
+    stde = sd(MAOC) / sqrt(n())
+  ) -> df_MAOC_1; df_MAOC_1
+
+ggplot() + 
+  geom_bar(data = df_MAOC_1, aes(x = N_Treat, y = aver, fill = N_Treat), size = 2, 
+           position = "dodge", stat = "identity", width = 0.7, alpha = .7) +  
+  scale_fill_manual(values = cols) +
+  scale_color_manual(values = cols) +
+  geom_errorbar(data = df_MAOC_1, aes(x = N_Treat, ymin = aver - stde, ymax = aver + stde), width = 0.15, size = 0.8) +
+  labs(x = '') + ylab(expression(paste("MAOC (g ", kg^-1, ")"))) +
+  theme_cowplot() + theme(
+    legend.position = 'none', 
+    axis.text = element_text(size = 20), 
+    axis.title = element_text(size = 22),
+    axis.title.x = element_blank(), 
+    strip.text = element_blank()
+  ) +
+  facet_wrap(~ Site, ncol = 4) + 
+  scale_y_continuous(expand = c(0, 0), limits = c(0, 14), breaks = seq(0, 16, by = 4)) -> MAOC_F1; MAOC_F1
+
+comparison_results <- compare_treatments(df_MAOC, site_var = "Site", treat_var = "N_Treat", value_var = "MAOC")
+
+comparison_results
+
+
+POC_res_L <- lmerTest::lmer(log(POC) ~ N_Treat + (1 | Site), data = subset(df_POC, Fertility == 'L'))
+summary(POC_res_L)
+
+POC_res_H <- lmerTest::lmer(log(POC) ~ N_Treat + (1 | Site), data = subset(df_POC, Fertility == 'H'))
+summary(POC_res_H)
+
+as.data.frame(summary(POC_res_L)$coefficients) %>% slice(2) %>% mutate(Group = 'C-poor soils') %>% 
+  bind_rows(as.data.frame(summary(POC_res_H)$coefficients) %>% slice(2) %>% mutate(Group = 'C-rich soils')) %>% 
+  ggplot(., aes(x = Group, y = Estimate, color = Group)) +
+  geom_point(size = 8) +
+  geom_errorbar(aes(x = Group, ymin = Estimate - 1.96*`Std. Error`, ymax = Estimate + 1.96*`Std. Error`), width = 0, 
+                linewidth = 10, alpha = .25, position = position_dodge(.6)) +
+  geom_hline(yintercept = 0, color = 'grey80', linetype = 'longdash', linewidth = .2) +
+  scale_color_manual(values = cols1) +
+  theme_cowplot() + 
+  labs(y = 'Effect size') +
+  theme(
+    legend.position = 'none', 
+    axis.text = element_text(size = 20), 
+    axis.title = element_text(size = 22),
+    axis.title.x = element_blank(), 
+    axis.text.x = element_blank(), 
+    strip.text = element_blank()
+  ) -> POC_F2; POC_F2
+
+
+MAOC_res_L <- lmerTest::lmer(log(MAOC) ~ N_Treat + (1 | Site), data = subset(df_MAOC, Fertility == 'L'))
+summary(MAOC_res_L)
+
+MAOC_res_H <- lmerTest::lmer(log(MAOC) ~ N_Treat + (1 | Site), data = subset(df_MAOC, Fertility == 'H'))
+summary(MAOC_res_H)
+
+as.data.frame(summary(MAOC_res_L)$coefficients) %>% slice(2) %>% mutate(Group = 'C-poor soils') %>% 
+  bind_rows(as.data.frame(summary(MAOC_res_H)$coefficients) %>% slice(2) %>% mutate(Group = 'C-rich soils')) %>% 
+  ggplot(., aes(x = Group, y = Estimate, color = Group)) +
+  geom_point(size = 8) +
+  geom_errorbar(aes(x = Group, ymin = Estimate - 1.96*`Std. Error`, ymax = Estimate + 1.96*`Std. Error`), width = 0, 
+                linewidth = 10, alpha = .25, position = position_dodge(.6)) +
+  geom_hline(yintercept = 0, color = 'grey80', linetype = 'longdash', linewidth = .2) +
+  scale_color_manual(values = cols1) +
+  labs(y = 'Effect size') +
+  theme_cowplot() + 
+  theme(
+    legend.position = 'none', 
+    axis.text = element_text(size = 20), 
+    axis.title = element_text(size = 22),
+    axis.title.x = element_blank(), 
+    strip.text = element_blank()
+  ) -> MAOC_F2; MAOC_F2
+
+
+((POC_F1 / MAOC_F1) | (POC_F2 / MAOC_F2)) + plot_layout(widths = c(4, 1.2))
+
+ggsave('POC and MAOC_6.29.pdf', plot = last_plot(), width = 14, height = 8, device = cairo_pdf)
+
+###### Fig3 factors change and cor ##########
+cols <- c('royalblue4','red4')
+df <- read.xlsx('C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\可能放在附录的东西\\综合数据.xlsx', 1) %>% 
+  dplyr::select(-c(pH, SOC, POC, MAOC, AGB))
+df <- read.xlsx('/Users/lemon/Desktop/目前的需要做的事情/To_TJ/N_addition/可能放在附录的东西/综合数据.xlsx', 1) %>% 
+  dplyr::select(-c(pH, SOC, POC, MAOC, AGB))
+head(df)
+
+AGB_L <- lmer(log(AGB_1) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+AGB_H <- lmer(log(AGB_1) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+MNC_L <- lmer(log(MNC) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+MNC_H <- lmer(log(MNC) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+Lignin_L <- lmer(log(Lignin) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+Lignin_H <- lmer(log(Lignin) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+qCO2_L <- lmer(log(qCO2) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+qCO2_H <- lmer(log(qCO2) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+Oxidase_L <- lmer(log(Oxidase) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+Oxidase_H <- lmer(log(Oxidase) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+F_B_L <- lmer(log(F_B) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+F_B_H <- lmer(log(F_B) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+RL_L <- lmer(log(RL) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+RL_H <- lmer(log(RL) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+VL_L <- lmer(log(VL) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+VL_H <- lmer(log(VL) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+
+MWD_L <- lmer(log(MWD) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+MWD_H <- lmer(log(MWD) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+FeoAlo_L <- lmer(log(FeoAlo) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+FeoAlo_H <- lmer(log(FeoAlo) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+FepAlp_L <- lmer(log(FepAlp) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+FepAlp_H <- lmer(log(FepAlp) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+Caexe_L <- lmer(log(Caexe) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+Caexe_H <- lmer(log(Caexe) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+Mgexe_L <- lmer(log(Mgexe) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+Mgexe_H <- lmer(log(Mgexe) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+Aliphaticity_L <- lmer(log(Aliphaticity) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+Aliphaticity_H <- lmer(log(Aliphaticity) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+Recalcitrance_L <- lmer(log(Recalcitrance) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'L'))
+Recalcitrance_H <- lmer(log(Recalcitrance) ~ N_Treat + (1 | Site), data = subset(df, Fertility == 'H'))
+
+as.data.frame(summary(AGB_L)$coefficients) %>% slice(2) %>% mutate(Group = 'C-poor') %>% 
+  bind_rows(as.data.frame(summary(AGB_H)$coefficients) %>% slice(2) %>% mutate(Group = 'C-rich')) %>% 
+  bind_rows(as.data.frame(summary(MNC_L)$coefficients) %>% slice(2) %>% mutate(Group = 'C-poor')) %>% 
+  bind_rows(as.data.frame(summary(MNC_H)$coefficients) %>% slice(2) %>% mutate(Group = 'C-poor'))
+
+results <- 
+  as.data.frame(summary(AGB_L)$coefficients) %>% 
+  slice(2) %>% 
+  mutate(Group = 'C-poor', Type = 'AGB') %>% 
+  bind_rows(as.data.frame(summary(AGB_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'AGB')) %>% 
+  bind_rows(as.data.frame(summary(MNC_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'MNC')) %>% 
+  bind_rows(as.data.frame(summary(MNC_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'MNC')) %>% 
+  bind_rows(as.data.frame(summary(Lignin_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'Lignin')) %>% 
+  bind_rows(as.data.frame(summary(Lignin_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'Lignin')) %>% 
+  bind_rows(as.data.frame(summary(qCO2_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'qCO2')) %>% 
+  bind_rows(as.data.frame(summary(qCO2_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'qCO2')) %>% 
+  bind_rows(as.data.frame(summary(Oxidase_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'Oxidase')) %>% 
+  bind_rows(as.data.frame(summary(Oxidase_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'Oxidase')) %>% 
+  bind_rows(as.data.frame(summary(F_B_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'F_B')) %>% 
+  bind_rows(as.data.frame(summary(F_B_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'F_B')) %>% 
+  bind_rows(as.data.frame(summary(RL_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'RL')) %>% 
+  bind_rows(as.data.frame(summary(RL_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'RL')) %>% 
+  bind_rows(as.data.frame(summary(VL_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'VL')) %>% 
+  bind_rows(as.data.frame(summary(VL_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'VL')) %>% 
+  bind_rows(as.data.frame(summary(MWD_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'MWD')) %>% 
+  bind_rows(as.data.frame(summary(MWD_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'MWD')) %>% 
+  bind_rows(as.data.frame(summary(FeoAlo_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'FeoAlo')) %>% 
+  bind_rows(as.data.frame(summary(FeoAlo_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'FeoAlo')) %>% 
+  bind_rows(as.data.frame(summary(FepAlp_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'FepAlp')) %>% 
+  bind_rows(as.data.frame(summary(FepAlp_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'FepAlp')) %>% 
+  bind_rows(as.data.frame(summary(Caexe_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'Caexe')) %>% 
+  bind_rows(as.data.frame(summary(Caexe_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'Caexe')) %>% 
+  bind_rows(as.data.frame(summary(Mgexe_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'Mgexe')) %>% 
+  bind_rows(as.data.frame(summary(Mgexe_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'Mgexe')) %>% 
+  bind_rows(as.data.frame(summary(Aliphaticity_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'Aliphaticity')) %>% 
+  bind_rows(as.data.frame(summary(Aliphaticity_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'Aliphaticity')) %>% 
+  bind_rows(as.data.frame(summary(Recalcitrance_L)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-poor', Type = 'Recalcitrance')) %>% 
+  bind_rows(as.data.frame(summary(Recalcitrance_H)$coefficients) %>% 
+              slice(2) %>% 
+              mutate(Group = 'C-rich', Type = 'Recalcitrance')) %>%
+  rownames_to_column() %>%
+  dplyr::select(-rowname); results
+
+results %>%  mutate(Sig = case_when(
+  `Pr(>|t|)` < 0.001 ~ "***",
+  `Pr(>|t|)` < 0.01 ~ "**",
+  `Pr(>|t|)` < 0.05 ~ "*",
+  TRUE ~ ""
+)) %>% 
+  mutate(
+    LowCI = Estimate - 1.96 * `Std. Error`,
+    UpCI = Estimate + 1.96 * `Std. Error`
+  ) %>% dplyr::select(Group, Type, Sig, LowCI, UpCI, Estimate) %>% 
+  mutate(Sig_1 = if_else(LowCI * UpCI > 0, "Sig", "Nosig")) -> results_p; results_p
+
+results_p$Type <- factor(results_p$Type, levels = rev(c('AGB',
+  'Lignin', 'MNC', 'qCO2', 'Oxidase','F_B','RL','VL',
+  'MWD','FeoAlo','FepAlp',"Caexe","Mgexe","Aliphaticity","Recalcitrance"
+)))
+results_p$Group <- factor(results_p$Group, levels = rev(c('C-poor', 'C-rich')))
+
+ggplot(results_p, aes(Estimate, Type, fill = Group, color = Group,shape = Sig_1)) +
+  geom_vline(xintercept = 0, linetype = "longdash", color = "grey40") +
+  geom_point(position = position_dodge(.6), size = 6) +
+  geom_errorbar(aes(xmin = LowCI, xmax = UpCI), position = position_dodge(.6), 
+                width = 0, linewidth = 6, alpha = .2) +
+  scale_shape_manual(values = c(1, 16)) +
+  scale_color_manual(values = cols1) +
+  scale_x_continuous(limits = c(-0.8, 0.9)) +
+  labs(x = 'Effect size', y = '') +
+  theme_cowplot() + geom_hline(yintercept = c(2.5, 7.5, 12.5), color = 'grey10') +
+  geom_hline(yintercept = c(1.5, 3.5, 4.5, 5.5, 6.5, 8.5, 9.5, 10.5,
+                            11.5, 13.5, 14.5), color = 'grey', linetype = 'longdash') +
+  theme(
+    legend.position = 'none', 
+    axis.text = element_text(size = 20), 
+    axis.title = element_text(size = 22),
+  )-> F1; F1
+ggsave(plot = last_plot(), 'rfrer44.pdf', width = 8, height = 12, device = cairo_pdf())
+
+data <- read.xlsx("C:\\Users\\ling\\Nutstore\\1\\To_TJ\\N_addition\\可能放在附录的东西\\综合数据.xlsx", 1)
+head(data)
+
+original_colnames <- colnames(data)
+
+data %>%
+  group_by(Fertility) %>%
+  mutate(across(where(is.numeric), log)) %>%
+  ungroup() -> scaled_data
+colnames(scaled_data) <- original_colnames
+head(scaled_data)
+
+indicators_POC <- c('Site', 'Fertility', 'Treat', 'N_Treat', 'Blocks', 'SOC', 'pH', 'MAOC','AGB')
+indicators_MAOC <- c('Site', 'Fertility', 'Treat', 'N_Treat', 'Blocks', 'SOC', 'pH', 'POC','AGB')
+
+data_POC_1 <- subset(scaled_data, Fertility == 'L')
+data_MAOC_1 <- subset(scaled_data, Fertility == 'H')
+
+data_POC <- data_POC_1[, !(names(data_POC_1) %in% indicators_POC)]
+head(data_POC)
+
+result <- lapply(data_POC, function(x) cor.test(data_POC$POC, x, method = 'spearman'))
+result
+do.call(rbind, result) -> POC_zero_cor; POC_zero_cor
+
+result <- partialCor(data = data_POC, y = "POC", 
+                     x = c('qCO2', 'Oxidase', 'F_B', 'RL', 'VL'),
+                     method = "spearman")
+result
+
+result <- partialCor(data = data_POC, y = "POC", 
+                     x = c('MWD', 'FeoAlo', 'FepAlp','Caexe','Mgexe'),
+                     method = "spearman")
+result
+
+result <- partialCor(data = data_POC, y = "POC", 
+                     x = c('Aliphaticity', 'Recalcitrance'),
+                     method = "spearman")
+result
+
+result <- partialCor(data = data_POC, y = "POC", 
+                     x = c('AGB_1', 'Lignin', 'MNC'),
+                     method = "spearman")
+result
+
+data_MAOC <- data_MAOC_1[, !(names(data_MAOC_1) %in% indicators_MAOC)]
+head(data_MAOC)
+
+result <- lapply(data_MAOC, function(x) cor.test(data_MAOC$MAOC, x, method = 'spearman'))
+result
+do.call(rbind, result) -> MAOC_zero_cor; MAOC_zero_cor
+
+result <- partialCor(data = data_MAOC, y = "MAOC", 
+                     x = c('qCO2', 'Oxidase', 'F_B', 'RL', 'VL'),
+                     method = "spearman")
+result
+
+result <- partialCor(data = data_MAOC, y = "MAOC", 
+                     x = c('MWD', 'FeoAlo', 'FepAlp','Caexe','Mgexe'),
+                     method = "spearman")
+result
+
+result <- partialCor(data = data_MAOC, y = "MAOC", 
+                     x = c('Aliphaticity', 'Recalcitrance'),
+                     method = "spearman")
+result
+
+result <- partialCor(data = data_MAOC, y = "MAOC", 
+                     x = c('AGB_1', 'Lignin', 'MNC'),
+                     method = "spearman")
+result
+
+subset(scaled_data, Fertility == 'L') %>% ggplot(., aes(AGB_1, POC)) + 
+  geom_point(aes(color = N_Treat), size = 4, alpha = .7) +
+  geom_smooth(method = 'lm', color = 'grey20', linewidth = 1, alpha = .2) + 
+  stat_regline_equation(aes(label = paste(..rr.label.., sep = "~~~")), label.y = 1.8, size = 5) +
+  stat_cor(aes(label = paste("italic(P)", signif(..p.., digits = 2), sep = "~~~")), label.y = 1.6, parse = TRUE, size = 5) +
+  scale_color_manual(values = cols) +
+  scale_x_continuous(breaks = seq(2.2, 3.2, 0.5)) +
+  labs(x = 'Scaled_AGB', y = 'Scaled_POC') +
+  theme_cowplot() -> p1; p1
+m1 <- lm(POC ~ AGB_1, data = subset(scaled_data, Fertility == 'L')); summary(m1)
+
+subset(scaled_data, Fertility == 'L') %>% ggplot(., aes(MWD, POC)) + 
+  geom_point(aes(color = N_Treat), size = 4, alpha = .7) +
+  geom_smooth(method = 'lm', color = 'grey20', linewidth = 1, alpha = .2) + 
+  stat_regline_equation(aes(label = paste(..rr.label.., sep = "~~~")), label.y = 1.8, size = 5) +
+  stat_cor(aes(label = paste("italic(P)", signif(..p.., digits = 2), sep = "~~~")), label.y = 1.6, parse = TRUE, size = 5) +
+  scale_color_manual(values = cols) +
+  labs(x = 'Scaled_MWD', y = 'Scaled_POC') +
+  theme_cowplot() + theme(axis.title.y = element_blank(), axis.text.y = element_blank()) -> p2; p2
+m2 <- lm(POC ~ MWD, data = subset(scaled_data, Fertility == 'L')); summary(m2)
+
+subset(scaled_data, Fertility == 'H') %>% ggplot(., aes(AGB_1, MAOC)) + 
+  geom_point(aes(color = N_Treat), size = 4, alpha = .7) +
+  geom_smooth(method = 'lm', color = 'grey20', linewidth = 1, alpha = .2) + 
+  stat_regline_equation(aes(label = paste(..rr.label.., sep = "~~~")), label.y = 2.5, size = 5) +
+  stat_cor(aes(label = paste("italic(P)", signif(..p.., digits = 2), sep = "~~~")), label.y = 2.47, parse = TRUE, size = 5) +
+  scale_color_manual(values = cols) +
+  labs(x = 'Scaled_AGB', y = 'Scaled_MAOC') +
+  theme_cowplot() -> p3; p3
+m3 <- lm(MAOC ~ AGB_1, data = subset(scaled_data, Fertility == 'H')); summary(m3)
+
+subset(scaled_data, Fertility == 'H') %>% ggplot(., aes(FeoAlo, MAOC)) + 
+  geom_point(aes(color = N_Treat), size = 4, alpha = .7) +
+  geom_smooth(method = 'lm', color = 'grey20', linewidth = 1, alpha = .2) + 
+  stat_regline_equation(aes(label = paste(..rr.label.., sep = "~~~")), label.y = 2.5, size = 5) +
+  stat_cor(aes(label = paste("italic(P)", signif(..p.., digits = 2), sep = "~~~")), label.y = 2.47, parse = TRUE, size = 5) +
+  scale_color_manual(values = cols) +
+  scale_x_continuous(breaks = seq(1.2, 2.4, 0.1)) +
+  labs(x = 'Scaled_Feo+Al0', y = 'Scaled_MAOC') +
+  theme_cowplot() + theme(axis.title.y = element_blank(), axis.text.y = element_blank()) -> p4; p4
+m4 <- lm(MAOC ~ FeoAlo, data = subset(scaled_data, Fertility == 'H')); summary(m4)
+
+
+(p1 | p2 | p3 | p4) & theme(
+  legend.position = 'none', 
+  axis.text = element_text(size = 20), 
+  axis.title = element_text(size = 22),
+)
+
+ggsave(plot = last_plot(), 'rfrerodpt.pdf', width = 14, height = 5, device = cairo_pdf())
+
+###### Fig4 map ##########
+df_POC <- fread("C:\\Users\\ling\\Desktop\\folders_for_upscaling\\POC_global_GBDT.csv") %>% mutate(change = make_pct(Prediction))
+df_MAOC <- fread("C:\\Users\\ling\\Desktop\\folders_for_upscaling\\MAOC_global_GBDT.csv") %>% mutate(change = make_pct(Prediction))
+head(df_POC)
+head(df_MAOC)
+
+library(rnaturalearth)
+costal <- st_read('C:\\Users\\ling\\Downloads\\gshhg-shp-2.3.7\\GSHHS_shp\\c\\GSHHS_c_L1.shp')
+
+ggplot(df_POC, aes(change)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(title = "Frequency Distribution of x", x = "x", y = "Frequency") +
+  theme_minimal()
+range(df_POC$change)
+
+count_in_range <- sum(df_POC$change >= 20 & df_POC$change <= 30)
+total_count <- nrow(df_POC)
+proportion_in_range <- count_in_range / total_count
+proportion_in_range
+
+
+ggplot() +
+  geom_tile(data = df_POC, aes(
+    x = x, y = y, fill = change)) +
+  geom_sf(data = costal, fill = NA, color = 'grey') +
+  scale_fill_gradientn(
+    colors = viridis::viridis(31, option = "plasma"),
+    values = scales::rescale(c(
+      min(df_POC$change), 
+      14, 18, 
+      seq(20, 30, by = 0.5),
+      34, 36, 38, 40, 
+      45, 50, 55, 60, 65, 70, 
+      max(df_POC$change)
+    ))) +
+  labs(fill = expression(Delta ~ "POC (%)")) +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  coord_sf(expand = F) +
+  theme_void() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_blank(), axis.title.x = element_blank(),
+        axis.text.y = element_blank(), axis.title.y = element_blank(),
+        plot.margin = margin(0.5, 0, 0, -0.2, "cm"),
+        legend.position = c(0.1, 0.3),
+        panel.border = element_blank(),
+        legend.key.size = unit(1, "cm"),
+        text = element_text(size = 20)) -> POC_plot
+POC_plot
+
+ggplot(df_MAOC, aes(change)) +
+  geom_histogram(binwidth = 1, fill = "skyblue", color = "black") +
+  labs(title = "Frequency Distribution of x", x = "x", y = "Frequency") +
+  theme_minimal()
+range(df_MAOC$change)
+
+count_in_range <- sum(df_MAOC$change >= 5 & df_MAOC$change <= 10)
+total_count <- nrow(df_MAOC)
+proportion_in_range <- count_in_range / total_count
+proportion_in_range
+
+ggplot() +
+  geom_tile(data = df_MAOC, aes(
+    x = x, y = y, fill = change)) +
+  geom_sf(data = costal, fill = NA, color = 'grey') +
+  scale_fill_gradientn(
+    colors = viridis::viridis(25, option = "viridis"),
+    values = scales::rescale(c(min(df_MAOC$change), 2.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 8.5, 9, 9.5, 10, 
+                               13, 16, max(df_MAOC$change)))) +
+  labs(fill = expression(Delta ~ "MAOC (%)")) +
+  xlab("Longitude") +
+  ylab("Latitude") +
+  coord_sf(expand = F) +
+  theme_void() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        plot.background = element_blank(),
+        panel.background = element_blank(),
+        axis.text.x = element_blank(), axis.title.x = element_blank(),
+        axis.text.y = element_blank(), axis.title.y = element_blank(),
+        plot.margin = margin(0.5, 0, 0, -0.2, "cm"),
+        legend.position = c(0.1, 0.3),
+        panel.border = element_blank(),
+        legend.key.size = unit(1, "cm"),
+        text = element_text(size = 20)) -> MAOC_plot
+MAOC_plot
+
+POC_plot / MAOC_plot
+
+ggsave(plot = last_plot(), 'refrtdd.pdf', width = 15, height = 21, device = cairo_pdf())
+
+df_POC %>% mutate(lat = floor(y)) %>% dplyr::group_by(lat) %>%  
+  dplyr::summarise(
+    mean = mean(change),
+    sd = sd(change)
+  ) %>% 
+  ggplot(., aes(y = lat, x = mean)) +
+  geom_path(size = .5) +
+  geom_ribbon(aes(y=lat, xmin=mean - sd,xmax = mean + sd),fill = "lightgrey", alpha=0.5) +
+  theme_cowplot() -> p1
+
+df_MAOC %>% mutate(lat = floor(y)) %>% dplyr::group_by(lat) %>%  
+  dplyr::summarise(
+    mean = mean(change),
+    sd = sd(change)
+  ) %>% 
+  ggplot(., aes(y = lat, x = mean)) +
+  geom_path(size = .5) +
+  geom_ribbon(aes(y=lat, xmin=mean - sd,xmax = mean + sd),fill = "lightgrey", alpha=0.5) +
+  theme_cowplot() -> p2
+
+p1/p2
+
+ggsave(plot = last_plot(), 'refdert.pdf', width = 3, height = 20, device = cairo_pdf())
