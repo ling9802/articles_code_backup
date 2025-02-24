@@ -1,0 +1,546 @@
+#### Random forest model #####
+from sklearn.metrics import r2_score as R2
+from sklearn.metrics import mean_squared_error as MSE
+from sklearn.metrics import explained_variance_score as EVS
+from sklearn.metrics import mean_absolute_error as MAE
+from sklearn.ensemble import RandomForestRegressor
+import pandas as pd
+from matplotlib import pyplot as plt
+import numpy as np
+from sklearn.model_selection import KFold
+import optuna
+import warnings
+
+# Suppress future warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# Set plot style
+plt.rc('font', family='Times New Roman', size=20)
+
+# Paths to the training and testing datasets
+train_path = r'training_set_with_data_augmentation.xlsx'
+test_path = r'test_set.xlsx'
+
+# Load datasets
+train_data = pd.read_excel(train_path)
+test_data = pd.read_excel(test_path)
+
+# Define feature and target column names
+X_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']
+y_column = 'Ea'
+
+# Split data into features and target variables
+X_train = train_data[X_columns].values
+y_train = train_data[y_column].values
+
+X_test = test_data[X_columns].values
+y_test = test_data[y_column].values
+
+# Define cross-validation
+kf = KFold(n_splits=5, random_state=2024, shuffle=True)
+
+def objective_function(trial):
+    # Set hyperparameter ranges
+    max_depth = trial.suggest_int('max_depth', 1, 20)
+    n_estimators = trial.suggest_int('n_estimators', 10, 1000)
+    min_samples_split = trial.suggest_int('min_samples_split', 2, 10)
+    random_state = trial.suggest_int('random_state', 0, 3000)
+    
+    # Initialize RandomForestRegressor with suggested hyperparameters
+    rf = RandomForestRegressor(max_depth=max_depth,
+                               n_estimators=n_estimators,
+                               min_samples_split=min_samples_split,
+                               random_state=random_state)
+    
+    # Perform 5-fold cross-validation and return the average R2 score
+    scores = []
+    for train_idx, val_idx in kf.split(X_train):
+        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+        rf.fit(X_train_fold, y_train_fold)
+        y_pred_fold = rf.predict(X_val_fold)
+        fold_score = R2(y_val_fold, y_pred_fold)
+        scores.append(fold_score)
+    
+    return np.mean(scores)
+
+# Initialize Optuna study to maximize the R2 score
+study = optuna.create_study(direction='maximize')
+n_trials = 200  # Number of trials for hyperparameter search
+study.optimize(objective_function, n_trials=n_trials)
+
+# Display the best hyperparameters
+best_params = study.best_trial.params
+print('Best hyperparameters:', best_params)
+
+# Define best hyperparameters (final model)
+best_params = {
+    'max_depth': 3,
+    'n_estimators': 21,
+    'min_samples_split': 5,
+    'random_state': 2720
+}
+
+# Initialize RandomForestRegressor with best hyperparameters
+rf = RandomForestRegressor(max_depth=best_params['max_depth'],
+                           n_estimators=best_params['n_estimators'],
+                           min_samples_split=best_params['min_samples_split'],
+                           random_state=best_params['random_state'])
+
+# Fit the model on the entire training set
+rf.fit(X_train, y_train)
+
+# Make predictions on the test set
+y_pred = rf.predict(X_test)
+
+# Calculate evaluation metrics
+mae = MAE(y_test, y_pred)
+mse = MSE(y_test, y_pred)
+rmse = np.sqrt(mse)
+evs = EVS(y_test, y_pred)
+r2 = R2(y_test, y_pred)
+
+# Print the evaluation metrics
+print('\nRandomForest Evaluation Metrics:')
+print('MAE:', mae)
+print('MSE:', mse)
+print('RMSE:', rmse)
+print('EVS:', evs)
+print('R2:', r2)
+
+# Plot the true vs predicted values
+plt.figure(figsize=(10, 8), dpi=100)
+plt.scatter(y_test, y_pred, color='black')
+plt.plot([-5, 5], [-5, 5], linestyle='dashed', color='royalblue')
+plt.xlim(-5, 5)
+plt.ylim(-5, 5)
+plt.xlabel('True')
+plt.ylabel('Prediction')
+
+# Save the model to a file
+import pickle
+with open(r'model_save/RandomForest.model', 'wb') as file:
+    pickle.dump(rf, file)
+
+
+#### Light gradient boosting model #####
+from sklearn.metrics import r2_score as R2
+from sklearn.metrics import mean_squared_error as MSE
+from sklearn.metrics import explained_variance_score as EVS
+from sklearn.metrics import mean_absolute_error as MAE
+
+from lightgbm import LGBMRegressor
+import pandas as pd
+from matplotlib import pyplot as plt
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import KFold
+from sklearn.model_selection import train_test_split
+import optuna
+import warnings
+
+# Suppress future warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# Set plot style
+plt.rc('font', family='Times New Roman', size=30)
+
+# Paths to the training and testing datasets
+train_path = r'training_set_with_data_augmentation.xlsx'
+test_path = r'test_set.xlsx'
+
+# Load datasets
+train_data = pd.read_excel(train_path)
+test_data = pd.read_excel(test_path)
+
+# Define feature and target column names
+X_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']
+y_column = 'Ea'
+
+# Split data into features and target variables
+X_train = train_data[X_columns].values
+y_train = train_data[y_column].values
+
+X_test = test_data[X_columns].values
+y_test = test_data[y_column].values
+
+# Define cross-validation
+kf = KFold(n_splits=5, random_state=2024, shuffle=True)
+
+def objective_function(trial):
+    # Set hyperparameter ranges
+    n_estimators = trial.suggest_int('n_estimators', 10, 1000)
+    max_depth = trial.suggest_int('max_depth', 2, 16)
+    learning_rate = trial.suggest_float('learning_rate', 0, 1)
+    random_state = trial.suggest_int('random_state', 0, 3000)
+
+    # Initialize LightGBM regressor with the suggested hyperparameters
+    lgbm = LGBMRegressor(n_estimators=n_estimators,
+                         max_depth=max_depth,
+                         learning_rate=learning_rate,
+                         random_state=random_state)
+
+    # Perform 5-fold cross-validation and return the average R2 score
+    scores = []
+    for train_idx, val_idx in kf.split(X_train):
+        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+        lgbm.fit(X_train_fold, y_train_fold)
+        y_pred_fold = lgbm.predict(X_val_fold)
+        fold_score = R2(y_val_fold, y_pred_fold)
+        scores.append(fold_score)
+
+    return np.mean(scores)
+
+# Initialize Optuna study to maximize the R2 score
+study = optuna.create_study(direction='maximize')
+n_trials = 2000  # Number of trials for hyperparameter search
+study.optimize(objective_function, n_trials=n_trials)
+
+# Display the best hyperparameters
+best_params = study.best_trial.params
+print('Best hyperparameters:', best_params)
+
+# Define best hyperparameters (final model)
+best_params = {
+    'n_estimators': 369,
+    'max_depth': 2,
+    'learning_rate': 0.09948690128133542,
+    'random_state': 739
+}
+
+# Initialize LightGBM regressor with best hyperparameters
+lgbm = LGBMRegressor(n_estimators=best_params['n_estimators'],
+                     max_depth=best_params['max_depth'],
+                     learning_rate=best_params['learning_rate'],
+                     random_state=best_params['random_state'])
+
+# Fit the model on the entire training set
+lgbm.fit(X_train, y_train)
+
+# Make predictions on the test set
+y_pred = lgbm.predict(X_test)
+
+# Calculate evaluation metrics
+mae = MAE(y_test, y_pred)
+mse = MSE(y_test, y_pred)
+rmse = np.sqrt(mse)
+evs = EVS(y_test, y_pred)
+r2 = R2(y_test, y_pred)
+
+# Print the evaluation metrics
+print('\nLightGBM Evaluation Metrics:')
+print('MAE:', mae)
+print('MSE:', mse)
+print('RMSE:', rmse)
+print('EVS:', evs)
+print('R2:', r2)
+
+# Plot the true vs predicted values
+plt.figure(figsize=(10, 8), dpi=100)
+plt.scatter(y_test, y_pred, color='black')
+plt.plot([-5, 5], [-5, 5], linestyle='dashed', color='royalblue')
+plt.xlim(-5, 5)
+plt.ylim(-5, 5)
+plt.xlabel('True')
+plt.ylabel('Prediction')
+
+# Plot feature importances
+plt.figure(figsize=(10, 8), dpi=100)
+feature_importance = dict(zip(X_columns, lgbm.feature_importances_ / sum(lgbm.feature_importances_)))
+feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=False))
+plt.barh(list(feature_importance.keys()), list(feature_importance.values()), color='black')
+plt.title('LightGBM Feature Importance')
+plt.xlabel('Score')
+plt.ylabel('Features')
+
+# Print feature importance scores
+print('Feature Importance Scores:')
+print(feature_importance)
+
+# Save the model to a file
+import pickle
+with open(r'model_save/LightGBM.model', 'wb') as file:
+    pickle.dump(lgbm, file)
+
+
+### Extreme gradient boosting model #####
+from sklearn.metrics import r2_score as R2
+from sklearn.metrics import mean_squared_error as MSE
+from sklearn.metrics import explained_variance_score as EVS
+from sklearn.metrics import mean_absolute_error as MAE
+from xgboost import XGBRegressor
+import pandas as pd
+from matplotlib import pyplot as plt
+import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import KFold
+from sklearn.model_selection import train_test_split
+import optuna
+import warnings
+
+# Suppress future warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# Set plot style
+plt.rc('font', family='Times New Roman', size=20)
+
+# Paths to the training and testing datasets
+train_path = r'train.xlsx'
+test_path = r'text.xlsx'
+
+# Load datasets
+train_data = pd.read_excel(train_path)
+test_data = pd.read_excel(test_path)
+
+# Define feature and target column names
+X_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']
+y_column = 'Ea'
+
+# Split data into features and target variables
+X_train = train_data[X_columns].values
+y_train = train_data[y_column].values
+
+X_test = test_data[X_columns].values
+y_test = test_data[y_column].values
+
+# Define cross-validation
+kf = KFold(n_splits=5, random_state=2024, shuffle=True)
+
+def objective_function(trial):
+    # Set hyperparameter ranges
+    max_depth = trial.suggest_int('max_depth', 1, 20)
+    n_estimators = trial.suggest_int('n_estimators', 10, 1000)
+    learning_rate = trial.suggest_float('learning_rate', 0, 1)
+    reg_alpha = trial.suggest_float('reg_alpha', 0, 50)
+    reg_lambda = trial.suggest_float('reg_lambda', 0, 50)
+    gamma = trial.suggest_float('gamma', 0, 50)
+    random_state = trial.suggest_int('random_state', 0, 3000)
+    
+    # Initialize XGBoost regressor with the suggested hyperparameters
+    xgb = XGBRegressor(max_depth=max_depth,
+                       n_estimators=n_estimators,
+                       learning_rate=learning_rate,
+                       reg_alpha=reg_alpha,
+                       reg_lambda=reg_lambda,
+                       gamma=gamma,
+                       random_state=random_state)
+    
+    # Perform 5-fold cross-validation and return the average R2 score
+    scores = []
+    for train_idx, val_idx in kf.split(X_train):
+        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+        xgb.fit(X_train_fold, y_train_fold)
+        y_pred_fold = xgb.predict(X_val_fold)
+        fold_score = R2(y_val_fold, y_pred_fold)
+        scores.append(fold_score)
+    
+    return np.mean(scores)
+
+# Initialize Optuna study to maximize the R2 score
+study = optuna.create_study(direction='maximize')
+n_trials = 200  # Number of trials for hyperparameter search
+study.optimize(objective_function, n_trials=n_trials)
+
+# Display the best hyperparameters
+best_params = study.best_trial.params
+print('Best hyperparameters:', best_params)
+
+# Define best hyperparameters (final model)
+best_params = {
+    'max_depth': 16,
+    'n_estimators': 55,
+    'learning_rate': 0.46142791963905755,
+    'reg_alpha': 3.724143861264925,
+    'reg_lambda': 12.591553701939448,
+    'gamma': 0.011691417422209353,
+    'random_state': 974
+}
+
+# Initialize XGBoost regressor with best hyperparameters
+xgb = XGBRegressor(max_depth=best_params['max_depth'],
+                   n_estimators=best_params['n_estimators'],
+                   learning_rate=best_params['learning_rate'],
+                   reg_alpha=best_params['reg_alpha'],
+                   reg_lambda=best_params['reg_lambda'],
+                   gamma=best_params['gamma'],
+                   random_state=best_params['random_state'])
+
+# Fit the model on the entire training set
+xgb.fit(X_train, y_train)
+
+# Make predictions on the test set
+y_pred = xgb.predict(X_test)
+
+# Calculate evaluation metrics
+mae = MAE(y_test, y_pred)
+mse = MSE(y_test, y_pred)
+rmse = np.sqrt(mse)
+evs = EVS(y_test, y_pred)
+r2 = R2(y_test, y_pred)
+
+# Print the evaluation metrics
+print('\nXGBoost Evaluation Metrics:')
+print('MAE:', mae)
+print('MSE:', mse)
+print('RMSE:', rmse)
+print('EVS:', evs)
+print('R2:', r2)
+
+# Plot the true vs predicted values
+plt.figure(figsize=(10, 8), dpi=100)
+plt.scatter(y_test, y_pred, color='black')
+plt.plot([-5, 5], [-5, 5], linestyle='dashed', color='royalblue')
+plt.xlim(-5, 5)
+plt.ylim(-5, 5)
+plt.xlabel('True')
+plt.ylabel('Prediction')
+
+# Save the model to a file
+import pickle
+with open(r'model_save/XGboost.model', 'wb') as file:
+    pickle.dump(xgb, file)
+
+
+
+
+### Gradient boosting decision trees model #####
+from sklearn.metrics import r2_score as R2
+from sklearn.metrics import mean_squared_error as MSE
+from sklearn.metrics import explained_variance_score as EVS
+from sklearn.metrics import mean_absolute_error as MAE
+
+from catboost import CatBoostRegressor
+import pandas as pd
+from matplotlib import pyplot as plt
+import numpy as np
+from sklearn.model_selection import KFold
+import optuna
+import warnings
+
+# Suppress future warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+
+# Set plot style
+plt.rc('font', family='Times New Roman', size=20)
+
+# Paths to the training and testing datasets
+train_path = r'training_set_with_data_augmentation.xlsx'
+test_path = r'test_set.xlsx'
+
+# Load datasets
+train_data = pd.read_excel(train_path)
+test_data = pd.read_excel(test_path)
+
+# Define feature and target column names
+X_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P']
+y_column = 'Ea'
+
+# Split data into features and target variables
+X_train = train_data[X_columns].values
+y_train = train_data[y_column].values
+
+X_test = test_data[X_columns].values
+y_test = test_data[y_column].values
+
+# Define cross-validation
+kf = KFold(n_splits=5, random_state=2024, shuffle=True)
+
+def objective_function(trial):
+    # Set hyperparameter ranges
+    n_estimators = trial.suggest_int('n_estimators', 10, 1000)
+    max_depth = trial.suggest_int('max_depth', 1, 16)
+    learning_rate = trial.suggest_float('learning_rate', 0, 1)
+    random_state = trial.suggest_int('random_state', 0, 3000)
+    
+    # Initialize CatBoostRegressor with suggested hyperparameters
+    cat = CatBoostRegressor(n_estimators=n_estimators,
+                            max_depth=max_depth,
+                            learning_rate=learning_rate,
+                            verbose=False,
+                            random_state=random_state)
+    
+    # Perform 5-fold cross-validation and return the average R2 score
+    scores = []
+    for train_idx, val_idx in kf.split(X_train):
+        X_train_fold, X_val_fold = X_train[train_idx], X_train[val_idx]
+        y_train_fold, y_val_fold = y_train[train_idx], y_train[val_idx]
+        cat.fit(X_train_fold, y_train_fold)
+        y_pred_fold = cat.predict(X_val_fold)
+        fold_score = R2(y_val_fold, y_pred_fold)
+        scores.append(fold_score)
+    
+    return np.mean(scores)
+
+# Initialize Optuna study to maximize the R2 score
+study = optuna.create_study(direction='maximize')
+n_trials = 200  # Number of trials for hyperparameter search
+study.optimize(objective_function, n_trials=n_trials)
+
+# Display the best hyperparameters
+best_params = study.best_trial.params
+print('Best hyperparameters:', best_params)
+
+# Define best hyperparameters (final model)
+best_params = {
+    'n_estimators': 99,
+    'max_depth': 3,
+    'learning_rate': 0.07806672469294972,
+    'random_state': 2404
+}
+
+# Initialize CatBoostRegressor with best hyperparameters
+cat = CatBoostRegressor(max_depth=best_params['max_depth'],
+                        n_estimators=best_params['n_estimators'],
+                        learning_rate=best_params['learning_rate'],
+                        verbose=False,
+                        random_state=best_params['random_state'])
+
+# Fit the model on the entire training set
+cat.fit(X_train, y_train)
+
+# Make predictions on the test set
+y_pred = cat.predict(X_test)
+
+# Calculate evaluation metrics
+mae = MAE(y_test, y_pred)
+mse = MSE(y_test, y_pred)
+rmse = np.sqrt(mse)
+evs = EVS(y_test, y_pred)
+r2 = R2(y_test, y_pred)
+
+# Print the evaluation metrics
+print('\nCatBoost Evaluation Metrics:')
+print('MAE:', mae)
+print('MSE:', mse)
+print('RMSE:', rmse)
+print('EVS:', evs)
+print('R2:', r2)
+
+# Plot the true vs predicted values
+plt.figure(figsize=(10, 8), dpi=100)
+plt.scatter(y_test, y_pred, color='black')
+plt.plot([-5, 5], [-5, 5], linestyle='dashed', color='royalblue')
+plt.xlim(-5, 5)
+plt.ylim(-5, 5)
+plt.xlabel('True')
+plt.ylabel('Prediction')
+
+# Plot feature importances
+plt.figure(figsize=(10, 8), dpi=100)
+feature_importance = dict(zip(X_columns, cat.feature_importances_ / sum(cat.feature_importances_)))
+feature_importance = dict(sorted(feature_importance.items(), key=lambda x: x[1], reverse=False))
+plt.barh(list(feature_importance.keys()), list(feature_importance.values()), color='black')
+plt.title('CatBoost Feature Importance')
+plt.xlabel('Score')
+plt.ylabel('Features')
+
+# Print feature importance scores
+print('Feature Importance Scores:')
+print(feature_importance)
+
+# Save the model to a file
+import pickle
+with open(r'model_save/CatBoost.model', 'wb') as file:
+    pickle.dump(cat, file)
