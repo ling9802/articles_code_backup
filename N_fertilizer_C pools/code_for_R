@@ -221,10 +221,6 @@ vector1 <- resPOC_before$slope
 vector2 <- resPOC_after$slope
 wilcox.test(vector1, vector2, alternative = "two.sided")
 
-english_MR0 <- rma.mv(yi = yi, V = vi, mods = ~ group, 
-                      random = list(~ 1 |id/Order_ID), data = df1_POC)
-summary(english_MR0)
-
 res2 <- orchaRd::mod_results(english_MR0, mod = "group", group = "id")
 res2
 
@@ -241,9 +237,7 @@ POC_diff
 lin_size = 0.3; p_size = 0.5; h_lin_size = 0.7; wid_output = 5; hei_output = 5; ci_range1 <- 1; ci_range2 <- 0
 head(POC_es_1)
 
-english_MR0 <- rma.mv(yi = yi, V = vi, 
-                      random = list(~ id | num), data = POC_es)
-summary(english_MR0)
+
 fixeffect_data <- data.frame(
   Sample = 493/2,
   Estimate = 0.2159,
@@ -402,10 +396,6 @@ vector1 <- resMOC_before$slope
 vector2 <- resMOC_after$slope
 wilcox.test(vector1, vector2, alternative = "two.sided")
 
-english_MOC <- rma.mv(yi = yi, V = vi, mods = ~ group, 
-                      random = list(~ 1 | Order_ID), data = df1_MOC)
-summary(english_MOC)
-
 res2 <- orchaRd::mod_results(english_MOC, mod = "group", group = "id")
 res2
 
@@ -420,9 +410,7 @@ orchaRd::orchard_plot(res2,
         axis.title = element_text(size = 22)) -> MAOC_diff
 MAOC_diff
 
-english_MR0 <- rma.mv(yi = yi, V = vi, 
-                      random = list(~ id | num), data = MOC_es)
-summary(english_MR0) 
+
 fixeffect_data <- data.frame(
   Sample = 149/2, 
   Estimate = 0.0671,
