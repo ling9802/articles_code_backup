@@ -506,9 +506,7 @@ length(unique(SOC_es_1$num))
 lin_size = 0.3; p_size = 0.5; h_lin_size = 0.7; wid_output = 5; hei_output = 5; ci_range1 <- 1; ci_range2 <- 0
 head(SOC_es_1)
 
-english_MR0 <- rma.mv(yi = yi, V = vi, 
-                      random = list(~ id | num), data = SOC_es)
-summary(english_MR0)
+
 fixeffect_data <- data.frame(
   Sample = 565/2,
   Estimate = 0.1068,
