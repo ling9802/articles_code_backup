@@ -1,8 +1,8 @@
 ## Code Availability and Software Dependencies
 
-This repository includes the scripts and R Markdown files required to reproduce the main analyses and figures for the manuscript *Conservation agriculture buffers persistent carbon loss under warming by microbial adaptation*. The workflow, input files and software dependencies are documented here and in `zancuncun.Rmd`.
+This repository includes the scripts and R Markdown files required to reproduce the main analyses and figures for the manuscript *Conservation agriculture buffers persistent carbon loss under warming by microbial adaptation*. The workflow, input files and software dependencies are documented here and in `Code_workflow.html`.
 
-The R Markdown file `zancuncun.Rmd` records software and package versions automatically during rendering. The current environment used to check the analysis is:
+The current environment used to check the analysis is:
 
 | Software         | Version                |
 | ---------------- | ---------------------- |
