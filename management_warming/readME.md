@@ -1,6 +1,6 @@
 ## Code Availability and Software Dependencies
 
-This repository includes the scripts and R Markdown files required to reproduce the main analyses and figures for the manuscript *Conservation agriculture buffers persistent carbon loss under warming by microbial adaptation*. The workflow, input files and software dependencies are documented here and in `Code_workflow.html`.
+This repository includes the scripts and R Markdown files required to reproduce the main analyses and figures for the manuscript *Conservation agriculture buffers persistent carbon loss under warming by microbial adaptation*. The workflow, input files and software dependencies are documented here and in `Code_workflow.pdf`.
 
 The current environment used to check the analysis is:
 
